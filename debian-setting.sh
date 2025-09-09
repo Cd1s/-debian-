@@ -25,13 +25,33 @@ SYSCTL_CONF="/etc/sysctl.conf"
 # 清理旧配置
 sed -i '/net\.core\.default_qdisc/d' $SYSCTL_CONF
 sed -i '/net\.ipv4\.tcp_congestion_control/d' $SYSCTL_CONF
+sed -i '/# BBR 配置/d' $SYSCTL_CONF
 
 # 添加新配置
 cat >> $SYSCTL_CONF <<EOF
 
-# 启用 FQ 调度器 + BBR 拥塞控制
-net.core.default_qdisc=fq
-net.ipv4.tcp_congestion_control=bbr
+# BBR 配置 - 由脚本自动添加
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+
+# 网络性能优化
+net.ipv4.ip_forward = 1
+net.ipv4.conf.all.forwarding = 1
+net.ipv4.conf.default.forwarding = 1
+net.ipv4.conf.all.route_localnet = 1
+net.ipv4.tcp_window_scaling = 1
+net.ipv4.tcp_adv_win_scale = 1
+net.ipv4.tcp_notsent_lowat = 131072
+net.ipv4.tcp_collapse_max_bytes = 6291456
+net.ipv4.tcp_rmem = 8192 262144 536870912
+net.ipv4.tcp_wmem = 8192 262144 536870912
+net.ipv4.udp_rmem_min = 16384
+net.ipv4.udp_wmem_min = 16384
+net.ipv4.udp_mem = 8192 262144 536870912
+net.core.rmem_max = 26214400
+net.core.rmem_default = 26214400
+net.core.optmem_max = 65535
+net.core.netdev_max_backlog = 30000
 EOF
 
 echo "=== 应用配置 ==="
@@ -52,8 +72,8 @@ cat > /etc/fail2ban/jail.local <<'EOF'
 banaction = iptables-multiport
 ignoreip = 127.0.0.1/8 ::1
 
-# 短期保护：10分钟内输错5次 → 封禁1小时
-[sshd-short]
+# SSH 保护：10分钟内输错5次 → 封禁1小时
+[sshd]
 enabled  = true
 port     = ssh
 filter   = sshd
@@ -61,16 +81,6 @@ logpath  = /var/log/auth.log
 findtime = 600
 maxretry = 5
 bantime  = 3600
-
-# 长期保护：1小时内输错20次 → 永久封禁
-[sshd-hard]
-enabled  = true
-port     = ssh
-filter   = sshd
-logpath  = /var/log/auth.log
-findtime = 3600
-maxretry = 20
-bantime  = -1
 EOF
 
 echo "=== 确保日志文件存在 ==="
@@ -83,8 +93,27 @@ echo "=== 启动并设置开机自启 fail2ban ==="
 systemctl enable fail2ban
 systemctl restart fail2ban
 
+# 等待服务完全启动
+echo "=== 等待 fail2ban 服务启动 ==="
+sleep 5
+
 echo "=== 检查 fail2ban 状态 ==="
-fail2ban-client status sshd-short
-fail2ban-client status sshd-hard
+# 检查服务是否正在运行
+if systemctl is-active --quiet fail2ban; then
+    echo "✅ fail2ban 服务已启动"
+    
+    # 检查 jail 状态
+    if fail2ban-client status &>/dev/null; then
+        echo "✅ fail2ban 客户端通信正常"
+        fail2ban-client status
+        echo ""
+        fail2ban-client status sshd 2>/dev/null || echo "⚠️ sshd jail 可能需要时间初始化"
+    else
+        echo "⚠️ fail2ban 客户端通信异常，请稍后手动检查"
+    fi
+else
+    echo "❌ fail2ban 服务启动失败"
+    systemctl status fail2ban --no-pager
+fi
 
 echo "✅ 脚本执行完成：Fail2ban 已启用，BBR + FQ 已永久生效"
