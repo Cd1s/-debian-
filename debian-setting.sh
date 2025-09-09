@@ -1,6 +1,7 @@
 #!/bin/bash
-# 一键安装并配置 fail2ban + 常用工具 + 永久开启 BBR + FQ
-# 适用 Debian 11
+# 一键安装 Fail2ban + 工具 + BBR + FQ
+# 适用于 Debian 11
+# Author: ChatGPT
 
 set -e
 
@@ -72,11 +73,17 @@ maxretry = 20
 bantime  = -1
 EOF
 
+echo "=== 确保日志文件存在 ==="
+for LOG in /var/log/auth.log; do
+  [ -f "$LOG" ] || touch "$LOG"
+  chmod 600 "$LOG"
+done
+
 echo "=== 启动并设置开机自启 fail2ban ==="
 systemctl enable fail2ban
 systemctl restart fail2ban
 
-echo "=== 完成！检查 fail2ban 状态 ==="
+echo "=== 检查 fail2ban 状态 ==="
 fail2ban-client status sshd-short
 fail2ban-client status sshd-hard
 
