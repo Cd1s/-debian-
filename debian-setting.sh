@@ -92,7 +92,7 @@ systemctl restart fail2ban
 
 # 等待服务完全启动
 echo "=== 等待 fail2ban 服务启动 ==="
-sleep 5
+sleep 2
 
 echo "=== 检查 fail2ban 状态 ==="
 # 检查服务是否正在运行
